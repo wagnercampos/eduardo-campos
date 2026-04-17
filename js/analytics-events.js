@@ -18,23 +18,44 @@
 (function () {
   'use strict';
 
-  // Aguarda o Umami estar disponível
-  function waitUmami(cb, tries) {
-    tries = tries || 0;
-    if (window.umami && typeof window.umami.track === 'function') {
-      cb();
-    } else if (tries < 20) {
-      setTimeout(function () { waitUmami(cb, tries + 1); }, 300);
+  // Envia evento direto para a API do Umami em todos os IDs cadastrados
+  // (evita o conflito de window.umami quando há múltiplos scripts na página)
+  var UMAMI_HOST = 'https://analytics.agenciamoa.com.br';
+  var UMAMI_IDS = []; // preenchido pelo HTML via data-umami-ids
+
+  (function loadIds() {
+    var el = document.querySelector('script[data-umami-ids]');
+    if (el) {
+      UMAMI_IDS = el.getAttribute('data-umami-ids').split(',');
     }
-  }
+  })();
 
   function track(event, data) {
-    if (window.umami && typeof window.umami.track === 'function') {
-      window.umami.track(event, data || {});
-    }
+    UMAMI_IDS.forEach(function (id) {
+      try {
+        var payload = {
+          website: id,
+          hostname: window.location.hostname,
+          language: navigator.language,
+          referrer: document.referrer,
+          screen: window.screen.width + 'x' + window.screen.height,
+          title: document.title,
+          url: window.location.pathname,
+          name: event,
+          data: data || {}
+        };
+        var body = JSON.stringify({ payload: payload, type: 'event' });
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon(UMAMI_HOST + '/api/send', new Blob([body], { type: 'application/json' }));
+        } else {
+          fetch(UMAMI_HOST + '/api/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body, keepalive: true }).catch(function () {});
+        }
+      } catch (e) {}
+    });
   }
 
-  waitUmami(function () {
+  // Inicia imediatamente (não depende mais de window.umami)
+  (function () {
 
     // ── 1. SCROLL DEPTH ─────────────────────────────────────────
     var scrollMarks = { 25: false, 50: false, 75: false, 90: false };
@@ -144,6 +165,6 @@
       return section.id || section.tagName.toLowerCase();
     }
 
-  }); // fim waitUmami
+  })(); // fim init
 
 })();
